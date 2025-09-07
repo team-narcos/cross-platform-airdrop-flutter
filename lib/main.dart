@@ -14,7 +14,6 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-<<<<<<< HEAD
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => DeviceProvider()),
@@ -95,20 +94,10 @@ class MyApp extends StatelessWidget {
         ),
         home: const SplashScreen(),
       ),
-=======
-    return MaterialApp(
-      title: 'Cross-Platform Airdrop',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
-      home: const HomeScreen(), // ✅ This is the new home page
->>>>>>> 502fdce3e76b86ede327107f449516206cbaf395
     );
   }
 }
 
-<<<<<<< HEAD
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -148,10 +137,6 @@ class _SplashScreenState extends State<SplashScreen>
       }
     });
   }
-=======
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
->>>>>>> 502fdce3e76b86ede327107f449516206cbaf395
 
   @override
   void dispose() {
@@ -162,7 +147,6 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-<<<<<<< HEAD
       backgroundColor: Theme.of(context).primaryColor,
       body: Center(
         child: Column(
@@ -231,43 +215,9 @@ class HomeScreen extends StatelessWidget {
                   strokeWidth: 2,
                 ),
               ),
-=======
-      appBar: AppBar(
-        title: const Text("Cross-Platform Airdrop"),
-        centerTitle: true,
-      ),
-      body: Column(
-        children: [
-          const SizedBox(height: 20),
-          const Text(
-            "Nearby Devices",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: 3, // dummy devices
-              itemBuilder: (context, index) {
-                return ListTile(
-                  leading: const Icon(Icons.devices),
-                  title: Text("Device ${index + 1}"),
-                  subtitle: const Text("Tap to connect"),
-                );
-              },
->>>>>>> 502fdce3e76b86ede327107f449516206cbaf395
             ),
-          ),
-          const SizedBox(height: 10),
-          ElevatedButton(
-            onPressed: () {},
-            child: const Text("Send File"),
-          ),
-          ElevatedButton(
-            onPressed: () {},
-            child: const Text("Receive File"),
-          ),
-          const SizedBox(height: 20),
-          const LinearProgressIndicator(value: null),
-        ],
+          ],
+        ),
       ),
     );
   }
