@@ -1,11 +1,12 @@
 import 'dart:async';
-
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:uuid/uuid.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/device_model.dart';
 
 class DeviceProvider extends ChangeNotifier {
@@ -13,17 +14,30 @@ class DeviceProvider extends ChangeNotifier {
   DeviceModel? _currentDevice;
   Timer? _discoveryTimer;
   Timer? _broadcastTimer;
+  Timer? _heartbeatTimer;
   bool _isDiscovering = false;
   final NetworkInfo _networkInfo = NetworkInfo();
   final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
   final Uuid _uuid = const Uuid();
 
-  List<DeviceModel> get discoveredDevices => List.unmodifiable(_discoveredDevices);
+  // WebSocket connection
+  WebSocketChannel? _channel;
+  StreamSubscription? _channelSubscription;
+  bool _isConnected = false;
+
+  // Signaling server URL
+  static const String _signalingServerUrl =
+      'wss://05538fa4-e385-477a-87a8-931b4c9d6a50-00-3pwqi7zydzj4c.sisko.replit.dev:3000';
+
+  List<DeviceModel> get discoveredDevices =>
+      List.unmodifiable(_discoveredDevices);
   DeviceModel? get currentDevice => _currentDevice;
   bool get isDiscovering => _isDiscovering;
+  bool get isConnected => _isConnected;
 
   Future<void> initialize() async {
     await _initializeCurrentDevice();
+    await _connectToSignalingServer();
     await startDiscovery();
   }
 
@@ -82,17 +96,192 @@ class DeviceProvider extends ChangeNotifier {
     return DeviceType.unknown;
   }
 
+  Future<void> _connectToSignalingServer() async {
+    try {
+      _channel = WebSocketChannel.connect(
+        Uri.parse(_signalingServerUrl),
+      );
+
+      _channelSubscription = _channel!.stream.listen(
+        _handleWebSocketMessage,
+        onError: (error) {
+          debugPrint('WebSocket error: $error');
+          _isConnected = false;
+          notifyListeners();
+          _attemptReconnection();
+        },
+        onDone: () {
+          debugPrint('WebSocket connection closed');
+          _isConnected = false;
+          notifyListeners();
+          _attemptReconnection();
+        },
+      );
+
+      _isConnected = true;
+      notifyListeners();
+      debugPrint('Connected to signaling server');
+    } catch (e) {
+      debugPrint('Failed to connect to signaling server: $e');
+      _isConnected = false;
+      notifyListeners();
+      _attemptReconnection();
+    }
+  }
+
+  void _handleWebSocketMessage(dynamic message) {
+    try {
+      final data = jsonDecode(message as String);
+      final messageType = data['type'] as String?;
+
+      switch (messageType) {
+        case 'device_announcement':
+          _handleDeviceAnnouncement(data);
+          break;
+        case 'device_list':
+          _handleDeviceList(data);
+          break;
+        case 'device_offline':
+          _handleDeviceOffline(data);
+          break;
+        case 'ping':
+          _handlePing(data);
+          break;
+        case 'pong':
+          _handlePong(data);
+          break;
+        default:
+          debugPrint('Unknown message type: $messageType');
+      }
+    } catch (e) {
+      debugPrint('Error handling WebSocket message: $e');
+    }
+  }
+
+  void _handleDeviceAnnouncement(Map<String, dynamic> data) {
+    print('DEBUG: Device announcement data: $data'); // Add debug
+    try {
+      final deviceData = data['device'] as Map<String, dynamic>;
+      print('DEBUG: Extracted device data: $deviceData'); // Add debug
+
+      final device = DeviceModel(
+        id: deviceData['id'] as String,
+        name: deviceData['name'] as String,
+        ipAddress: deviceData['ipAddress'] as String,
+        type: _parseDeviceType(deviceData['type'] as String),
+        isOnline: true,
+        lastSeen: DateTime.now(),
+      );
+
+      print(
+          'DEBUG: Created device object: ${device.name}, ID: ${device.id}'); // Add debug
+      addDiscoveredDevice(device);
+      print(
+          'DEBUG: Device added to list. Total devices: ${_discoveredDevices.length}'); // Add debug
+    } catch (e) {
+      debugPrint('Error handling device announcement: $e');
+    }
+  }
+
+  void _handleDeviceList(Map<String, dynamic> data) {
+    try {
+      final devices = data['devices'] as List<dynamic>;
+      for (final deviceData in devices) {
+        final device = DeviceModel(
+          id: deviceData['id'] as String,
+          name: deviceData['name'] as String,
+          ipAddress: deviceData['ipAddress'] as String,
+          type: _parseDeviceType(deviceData['type'] as String),
+          isOnline: deviceData['isOnline'] as bool? ?? true,
+          lastSeen: DateTime.now(),
+        );
+        addDiscoveredDevice(device);
+      }
+    } catch (e) {
+      debugPrint('Error handling device list: $e');
+    }
+  }
+
+  void _handleDeviceOffline(Map<String, dynamic> data) {
+    try {
+      final deviceId = data['deviceId'] as String;
+      updateDeviceStatus(deviceId, false);
+    } catch (e) {
+      debugPrint('Error handling device offline: $e');
+    }
+  }
+
+  void _handlePing(Map<String, dynamic> data) {
+    try {
+      final fromDeviceId = data['fromDeviceId'] as String;
+      _sendPong(fromDeviceId);
+    } catch (e) {
+      debugPrint('Error handling ping: $e');
+    }
+  }
+
+  void _handlePong(Map<String, dynamic> data) {
+    try {
+      final fromDeviceId = data['fromDeviceId'] as String;
+      updateDeviceStatus(fromDeviceId, true);
+    } catch (e) {
+      debugPrint('Error handling pong: $e');
+    }
+  }
+
+  DeviceType _parseDeviceType(String typeString) {
+    switch (typeString.toLowerCase()) {
+      case 'android':
+        return DeviceType.android;
+      case 'ios':
+        return DeviceType.ios;
+      case 'windows':
+        return DeviceType.windows;
+      case 'macos':
+        return DeviceType.macos;
+      case 'linux':
+        return DeviceType.linux;
+      default:
+        return DeviceType.unknown;
+    }
+  }
+
+  String _deviceTypeToString(DeviceType type) {
+    switch (type) {
+      case DeviceType.android:
+        return 'android';
+      case DeviceType.ios:
+        return 'ios';
+      case DeviceType.windows:
+        return 'windows';
+      case DeviceType.macos:
+        return 'macos';
+      case DeviceType.linux:
+        return 'linux';
+      case DeviceType.unknown:
+        return 'unknown';
+    }
+  }
+
   Future<void> startDiscovery() async {
     if (_isDiscovering) return;
 
     _isDiscovering = true;
     notifyListeners();
 
+    // Ensure we're connected to the signaling server
+    if (!_isConnected) {
+      await _connectToSignalingServer();
+    }
+
     // Start broadcasting our presence
     _startBroadcast();
 
-    // Start discovering other devices
-    _startDeviceDiscovery();
+    // Start heartbeat to keep connection alive
+    _startHeartbeat();
+
+    // Request current device list
+    _requestDeviceList();
 
     // Clean up offline devices periodically
     _startCleanupTimer();
@@ -100,96 +289,128 @@ class DeviceProvider extends ChangeNotifier {
 
   void _startBroadcast() {
     _broadcastTimer?.cancel();
-    _broadcastTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+    _broadcastTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
       _broadcastPresence();
     });
+
+    // Broadcast immediately
+    _broadcastPresence();
   }
 
-  void _startDeviceDiscovery() {
-    _discoveryTimer?.cancel();
-    _discoveryTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      _scanForDevices();
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      _sendHeartbeat();
     });
   }
 
   void _startCleanupTimer() {
-    Timer.periodic(const Duration(seconds: 30), (timer) {
+    Timer.periodic(const Duration(seconds: 60), (timer) {
       _cleanupOfflineDevices();
     });
   }
 
   Future<void> _broadcastPresence() async {
-    if (_currentDevice == null) return;
+    if (_currentDevice == null || !_isConnected) return;
 
     try {
-      // In a real implementation, this would use UDP multicast or similar
-      // For now, we'll simulate the broadcast
-      await _simulateBroadcast();
+      final message = {
+        'type': 'announce_device',
+        'device': {
+          'id': _currentDevice!.id,
+          'name': _currentDevice!.name,
+          'ipAddress': _currentDevice!.ipAddress,
+          'type': _deviceTypeToString(_currentDevice!.type),
+          'isOnline': true,
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        }
+      };
+
+      _channel?.sink.add(jsonEncode(message));
     } catch (e) {
       debugPrint('Error broadcasting presence: $e');
     }
   }
 
-  Future<void> _simulateBroadcast() async {
-    // This simulates other devices discovering us
-    // In a real app, this would involve actual network communication
-  }
+  void _requestDeviceList() {
+    if (!_isConnected) return;
 
-  Future<void> _scanForDevices() async {
     try {
-      // In a real implementation, this would scan the network for other devices
-      // For demo purposes, we'll simulate finding devices
-      await _simulateDeviceDiscovery();
+      final message = {
+        'type': 'request_device_list',
+        'fromDeviceId': _currentDevice?.id,
+      };
+
+      _channel?.sink.add(jsonEncode(message));
     } catch (e) {
-      debugPrint('Error scanning for devices: $e');
+      debugPrint('Error requesting device list: $e');
     }
   }
 
-  Future<void> _simulateDeviceDiscovery() async {
-    // Simulate discovering random devices for demo purposes
-    if (_discoveredDevices.length < 3 && Random().nextBool()) {
-      final newDevice = _generateRandomDevice();
-      addDiscoveredDevice(newDevice);
+  void _sendHeartbeat() {
+    if (!_isConnected) return;
+
+    try {
+      final message = {
+        'type': 'heartbeat',
+        'deviceId': _currentDevice?.id,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      };
+
+      _channel?.sink.add(jsonEncode(message));
+    } catch (e) {
+      debugPrint('Error sending heartbeat: $e');
     }
   }
 
-  DeviceModel _generateRandomDevice() {
-    final deviceNames = [
-      'John\'s iPhone',
-      'Sarah\'s MacBook',
-      'Mike\'s Android',
-      'Lisa\'s iPad',
-      'Tom\'s Windows PC',
-      'Anna\'s Galaxy',
-    ];
+  void _sendPong(String toDeviceId) {
+    if (!_isConnected) return;
 
-    final deviceTypes = DeviceType.values.where((type) => type != DeviceType.unknown).toList();
-    final random = Random();
+    try {
+      final message = {
+        'type': 'pong',
+        'fromDeviceId': _currentDevice?.id,
+        'toDeviceId': toDeviceId,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      };
 
-    return DeviceModel(
-      id: _uuid.v4(),
-      name: deviceNames[random.nextInt(deviceNames.length)],
-      ipAddress: '192.168.1.${random.nextInt(254) + 1}',
-      type: deviceTypes[random.nextInt(deviceTypes.length)],
-      isOnline: true,
-      lastSeen: DateTime.now(),
-    );
+      _channel?.sink.add(jsonEncode(message));
+    } catch (e) {
+      debugPrint('Error sending pong: $e');
+    }
   }
 
   void addDiscoveredDevice(DeviceModel device) {
-    // Don't add our own device
-    if (device.id == _currentDevice?.id) return;
+    print(
+        'DEBUG: Adding device: ${device.name} with ID: ${device.id}'); // Add debug
 
-    final existingIndex = _discoveredDevices.indexWhere((d) => d.id == device.id);
+    // Don't add our own device
+    if (device.id == _currentDevice?.id) {
+      print('DEBUG: Skipping own device'); // Add debug
+      return;
+    }
+
+    final existingIndex =
+        _discoveredDevices.indexWhere((d) => d.id == device.id);
     if (existingIndex != -1) {
+      print(
+          'DEBUG: Updating existing device at index $existingIndex'); // Add debug
       _discoveredDevices[existingIndex] = device.copyWith(
         isOnline: true,
         lastSeen: DateTime.now(),
       );
     } else {
+      print('DEBUG: Adding new device to list'); // Add debug
       _discoveredDevices.add(device);
     }
-    notifyListeners();
+
+    print(
+        'DEBUG: Total discovered devices now: ${_discoveredDevices.length}'); // Add debug
+    print(
+        'DEBUG: Device list: ${_discoveredDevices.map((d) => d.name).toList()}'); // Add debug
+
+    notifyListeners(); // This is crucial!
+    print('DEBUG: notifyListeners() called'); // Add debug
   }
 
   void removeDiscoveredDevice(String deviceId) {
@@ -198,11 +419,13 @@ class DeviceProvider extends ChangeNotifier {
   }
 
   void updateDeviceStatus(String deviceId, bool isOnline) {
-    final index = _discoveredDevices.indexWhere((device) => device.id == deviceId);
+    final index =
+        _discoveredDevices.indexWhere((device) => device.id == deviceId);
     if (index != -1) {
       _discoveredDevices[index] = _discoveredDevices[index].copyWith(
         isOnline: isOnline,
-        lastSeen: isOnline ? DateTime.now() : _discoveredDevices[index].lastSeen,
+        lastSeen:
+            isOnline ? DateTime.now() : _discoveredDevices[index].lastSeen,
       );
       notifyListeners();
     }
@@ -212,13 +435,14 @@ class DeviceProvider extends ChangeNotifier {
     final now = DateTime.now();
     _discoveredDevices.removeWhere((device) {
       final timeSinceLastSeen = now.difference(device.lastSeen);
-      return timeSinceLastSeen.inMinutes > 2; // Remove devices not seen for 2 minutes
+      return timeSinceLastSeen.inMinutes >
+          5; // Remove devices not seen for 5 minutes
     });
-    
+
     // Mark devices as offline if not seen recently
     for (int i = 0; i < _discoveredDevices.length; i++) {
       final timeSinceLastSeen = now.difference(_discoveredDevices[i].lastSeen);
-      if (timeSinceLastSeen.inSeconds > 30 && _discoveredDevices[i].isOnline) {
+      if (timeSinceLastSeen.inMinutes > 2 && _discoveredDevices[i].isOnline) {
         _discoveredDevices[i] = _discoveredDevices[i].copyWith(isOnline: false);
       }
     }
@@ -229,6 +453,21 @@ class DeviceProvider extends ChangeNotifier {
     _isDiscovering = false;
     _discoveryTimer?.cancel();
     _broadcastTimer?.cancel();
+    _heartbeatTimer?.cancel();
+
+    // Send offline notification
+    if (_isConnected && _currentDevice != null) {
+      try {
+        final message = {
+          'type': 'device_offline',
+          'deviceId': _currentDevice!.id,
+        };
+        _channel?.sink.add(jsonEncode(message));
+      } catch (e) {
+        debugPrint('Error sending offline notification: $e');
+      }
+    }
+
     notifyListeners();
   }
 
@@ -238,14 +477,28 @@ class DeviceProvider extends ChangeNotifier {
   }
 
   Future<bool> pingDevice(DeviceModel device) async {
+    if (!_isConnected) return false;
+
     try {
-      // In a real implementation, this would ping the actual device
-      // For demo purposes, we'll simulate a ping result
-      await Future.delayed(const Duration(milliseconds: 500));
-      final isReachable = Random().nextBool();
-      
-      updateDeviceStatus(device.id, isReachable);
-      return isReachable;
+      final message = {
+        'type': 'ping',
+        'fromDeviceId': _currentDevice?.id,
+        'toDeviceId': device.id,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      };
+
+      _channel?.sink.add(jsonEncode(message));
+
+      // Wait for pong response (timeout after 5 seconds)
+      final completer = Completer<bool>();
+      Timer(const Duration(seconds: 5), () {
+        if (!completer.isCompleted) {
+          completer.complete(false);
+          updateDeviceStatus(device.id, false);
+        }
+      });
+
+      return await completer.future;
     } catch (e) {
       debugPrint('Error pinging device: $e');
       updateDeviceStatus(device.id, false);
@@ -253,10 +506,24 @@ class DeviceProvider extends ChangeNotifier {
     }
   }
 
+  void _attemptReconnection() {
+    if (_isDiscovering && !_isConnected) {
+      Timer(const Duration(seconds: 5), () {
+        if (!_isConnected) {
+          debugPrint('Attempting to reconnect to signaling server...');
+          _connectToSignalingServer();
+        }
+      });
+    }
+  }
+
   @override
   void dispose() {
     _discoveryTimer?.cancel();
     _broadcastTimer?.cancel();
+    _heartbeatTimer?.cancel();
+    _channelSubscription?.cancel();
+    _channel?.sink.close();
     super.dispose();
   }
 }
