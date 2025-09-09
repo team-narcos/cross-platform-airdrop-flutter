@@ -19,6 +19,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late TabController _tabController;
   DeviceModel? _selectedDevice;
   final PageController _pageController = PageController();
+  bool _isInitialized = false;
 
   @override
   void initState() {
@@ -26,10 +27,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _tabController = TabController(length: 3, vsync: this);
 
     // Initialize providers
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<DeviceProvider>().initialize();
-      context.read<FileTransferProvider>().initialize();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!_isInitialized) {
+        await _initializeProviders();
+      }
     });
+  }
+
+  Future<void> _initializeProviders() async {
+    try {
+      debugPrint('HomeScreen: Initializing providers...');
+      final deviceProvider = context.read<DeviceProvider>();
+      final transferProvider = context.read<FileTransferProvider>();
+
+      await deviceProvider.initialize();
+      await transferProvider.initialize();
+
+      _isInitialized = true;
+      debugPrint('HomeScreen: Providers initialized successfully');
+
+      // Start discovery immediately after initialization
+      await deviceProvider.startDiscovery();
+    } catch (e) {
+      debugPrint('HomeScreen: Error initializing providers: $e');
+      _showErrorSnackBar('Failed to initialize: $e');
+    }
   }
 
   @override
@@ -88,16 +110,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       actions: [
         Consumer<DeviceProvider>(
           builder: (context, deviceProvider, child) {
-            return IconButton(
-              onPressed: deviceProvider.isDiscovering
-                  ? deviceProvider.stopDiscovery
-                  : deviceProvider.startDiscovery,
-              icon: Icon(
-                deviceProvider.isDiscovering ? Icons.stop : Icons.refresh,
-              ),
-              tooltip: deviceProvider.isDiscovering
-                  ? 'Stop Discovery'
-                  : 'Refresh Devices',
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Connection status indicator
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color:
+                        deviceProvider.isConnected ? Colors.green : Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: deviceProvider.isDiscovering
+                      ? () => _stopDiscovery(deviceProvider)
+                      : () => _startDiscovery(deviceProvider),
+                  icon: Icon(
+                    deviceProvider.isDiscovering ? Icons.stop : Icons.refresh,
+                  ),
+                  tooltip: deviceProvider.isDiscovering
+                      ? 'Stop Discovery'
+                      : 'Refresh Devices',
+                ),
+              ],
             );
           },
         ),
@@ -130,10 +168,33 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  Future<void> _startDiscovery(DeviceProvider deviceProvider) async {
+    try {
+      debugPrint('HomeScreen: Starting discovery...');
+      await deviceProvider.startDiscovery();
+      _showSuccessSnackBar('Device discovery started');
+    } catch (e) {
+      debugPrint('HomeScreen: Error starting discovery: $e');
+      _showErrorSnackBar('Failed to start discovery: $e');
+    }
+  }
+
+  Future<void> _stopDiscovery(DeviceProvider deviceProvider) async {
+    try {
+      debugPrint('HomeScreen: Stopping discovery...');
+      await deviceProvider.stopDiscovery();
+      _showSuccessSnackBar('Device discovery stopped');
+    } catch (e) {
+      debugPrint('HomeScreen: Error stopping discovery: $e');
+      _showErrorSnackBar('Failed to stop discovery: $e');
+    }
+  }
+
   Widget _buildSendTab() {
     return RefreshIndicator(
       onRefresh: () async {
-        await context.read<DeviceProvider>().startDiscovery();
+        final deviceProvider = context.read<DeviceProvider>();
+        await _startDiscovery(deviceProvider);
       },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -142,6 +203,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildCurrentDeviceCard(),
+            const SizedBox(height: 20),
+            _buildConnectionStatusCard(),
             const SizedBox(height: 20),
             _buildDeviceDiscoverySection(),
             const SizedBox(height: 20),
@@ -165,7 +228,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
         return RefreshIndicator(
           onRefresh: () async {
-            await context.read<DeviceProvider>().startDiscovery();
+            final deviceProvider = context.read<DeviceProvider>();
+            await _startDiscovery(deviceProvider);
           },
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -297,16 +361,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           Container(
                             width: 8,
                             height: 8,
-                            decoration: const BoxDecoration(
-                              color: Colors.green,
+                            decoration: BoxDecoration(
+                              color: deviceProvider.isConnected
+                                  ? Colors.green
+                                  : Colors.orange,
                               shape: BoxShape.circle,
                             ),
                           ),
                           const SizedBox(width: 6),
-                          const Text(
-                            'Ready to share',
+                          Text(
+                            deviceProvider.isConnected
+                                ? 'Ready to share'
+                                : 'Connecting...',
                             style: TextStyle(
-                              color: Colors.green,
+                              color: deviceProvider.isConnected
+                                  ? Colors.green
+                                  : Colors.orange,
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                             ),
@@ -324,10 +394,75 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  Widget _buildConnectionStatusCard() {
+    return Consumer<DeviceProvider>(
+      builder: (context, deviceProvider, child) {
+        return Card(
+          color: deviceProvider.isConnected
+              ? Colors.green.shade50
+              : Colors.orange.shade50,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(
+                  deviceProvider.isConnected
+                      ? Icons.cloud_done
+                      : Icons.cloud_off,
+                  color:
+                      deviceProvider.isConnected ? Colors.green : Colors.orange,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        deviceProvider.isConnected
+                            ? 'Connected to Server'
+                            : 'Connecting to Server',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: deviceProvider.isConnected
+                              ? Colors.green.shade700
+                              : Colors.orange.shade700,
+                        ),
+                      ),
+                      Text(
+                        deviceProvider.isConnected
+                            ? 'Ready for device discovery'
+                            : 'Attempting to connect...',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: deviceProvider.isConnected
+                              ? Colors.green.shade600
+                              : Colors.orange.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!deviceProvider.isConnected)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildDeviceDiscoverySection() {
     return Consumer<DeviceProvider>(
       builder: (context, deviceProvider, child) {
         final devices = deviceProvider.discoveredDevices;
+
+        debugPrint(
+            'HomeScreen: Building device discovery section with ${devices.length} devices');
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -336,23 +471,40 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _buildSectionHeader('Available Devices', devices.length),
-                if (deviceProvider.isDiscovering)
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
+                Row(
+                  children: [
+                    if (deviceProvider.isDiscovering)
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      onPressed: () {
+                        deviceProvider.clearDiscoveredDevices();
+                        _startDiscovery(deviceProvider);
+                      },
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('Refresh'),
+                    ),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 12),
             if (devices.isEmpty)
               _buildEmptyDeviceState(deviceProvider)
             else
-              ...devices.map((device) => DeviceListItem(
-                    device: device,
-                    isSelected: _selectedDevice?.id == device.id,
-                    onTap: () => _selectDevice(device),
-                  )),
+              Column(
+                children: devices
+                    .map((device) => DeviceListItem(
+                          device: device,
+                          isSelected: _selectedDevice?.id == device.id,
+                          onTap: () => _selectDevice(device),
+                        ))
+                    .toList(),
+              ),
           ],
         );
       },
@@ -398,36 +550,46 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildReceiveStatusCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Icon(
-              Icons.download_rounded,
-              size: 48,
-              color: Theme.of(context).primaryColor,
+    return Consumer<DeviceProvider>(
+      builder: (context, deviceProvider, child) {
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.download_rounded,
+                  size: 48,
+                  color: deviceProvider.isConnected
+                      ? Theme.of(context).primaryColor
+                      : Colors.grey,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  deviceProvider.isConnected
+                      ? 'Ready to Receive'
+                      : 'Not Connected',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  deviceProvider.isConnected
+                      ? 'Your device is discoverable by nearby devices. Files sent to you will appear here.'
+                      : 'Connect to start receiving files from other devices.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            const Text(
-              'Ready to Receive',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Your device is discoverable by nearby devices. Files sent to you will appear here.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -552,9 +714,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             const SizedBox(height: 12),
             Text(
-              deviceProvider.isDiscovering
-                  ? 'Searching for devices...'
-                  : 'No devices found',
+              !deviceProvider.isConnected
+                  ? 'Not connected to server'
+                  : deviceProvider.isDiscovering
+                      ? 'Searching for devices...'
+                      : 'No devices found',
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
@@ -562,15 +726,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             const SizedBox(height: 8),
             Text(
-              deviceProvider.isDiscovering
-                  ? 'Make sure other devices have the app open'
-                  : 'Tap refresh to search again',
+              !deviceProvider.isConnected
+                  ? 'Check your internet connection'
+                  : deviceProvider.isDiscovering
+                      ? 'Make sure other devices have the app open and are connected'
+                      : 'Tap refresh to search again or make sure other devices are online',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.grey[600],
                 fontSize: 14,
               ),
             ),
+            if (!deviceProvider.isConnected) ...[
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () => _startDiscovery(deviceProvider),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry Connection'),
+              ),
+            ],
           ],
         ),
       ),
@@ -667,6 +841,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     setState(() {
       _selectedDevice = _selectedDevice?.id == device.id ? null : device;
     });
+    debugPrint('HomeScreen: Selected device: ${device.name} (${device.id})');
   }
 
   Future<void> _sendFiles(List<String> filePaths) async {
@@ -872,9 +1047,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   String _formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024.0).toStringAsFixed(1)} KB';
     if (bytes < 1024 * 1024 * 1024)
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+      return '${(bytes / (1024.0 * 1024.0)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024.0 * 1024.0 * 1024.0)).toStringAsFixed(1)} GB';
   }
 }
