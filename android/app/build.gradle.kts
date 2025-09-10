@@ -1,22 +1,21 @@
 plugins {
     id("com.android.application")
-    id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id("org.jetbrains.kotlin.android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
     namespace = "com.example.cross_platform_airdrop_flutter"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 34
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        jvmTarget = "17"
     }
 
     defaultConfig {
@@ -25,9 +24,15 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0.0"
+        // Add this block to resolve duplicate native libs issue
+        packagingOptions {
+            jniLibs {
+                pickFirsts.add("lib/arm64-v8a/libflutter.so")
+            }
+        }
     }
 
     buildTypes {
@@ -39,6 +44,8 @@ android {
     }
 }
 
-flutter {
-    source = "../.."
+dependencies {
+    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0")
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
 }

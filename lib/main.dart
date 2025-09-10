@@ -6,6 +6,8 @@ import 'providers/file_transfer_provider.dart';
 import 'screens/home_screen.dart';
 
 void main() {
+  // Ensure that widget binding is initialized before using plugins.
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 
@@ -16,8 +18,15 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => DeviceProvider()),
-        ChangeNotifierProvider(create: (_) => FileTransferProvider()),
+        ChangeNotifierProvider(
+          create: (_) => DeviceProvider(),
+          lazy: false, // Create the provider immediately
+        ),
+        // Initialize the provider when it's created.
+        ChangeNotifierProvider(
+          create: (_) => FileTransferProvider(),
+          lazy: false, // Create the provider immediately
+        ),
       ],
       child: MaterialApp(
         title: 'Flutter AirDrop',
@@ -126,16 +135,26 @@ class _SplashScreenState extends State<SplashScreen>
 
     _animationController.forward();
 
-    // Navigate to home screen after splash
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(
-            builder: (context) => const HomeScreen(),
-          ),
-        );
-      }
-    });
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    // Initialize providers here
+    try {
+      await context.read<DeviceProvider>().initialize();
+      await context.read<FileTransferProvider>().initialize();
+    } catch (e) {
+      // Handle initialization error, maybe show an error message
+      debugPrint("Failed to initialize providers: $e");
+    }
+
+    // Wait for splash screen animation to finish
+    await Future.delayed(const Duration(seconds: 3));
+
+    if (!mounted) return;
+
+    Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const HomeScreen()));
   }
 
   @override

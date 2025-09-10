@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:file_picker/file_picker.dart'
+    show FilePicker, FilePickerResult, FileType;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path/path.dart' as path;
 
@@ -78,7 +79,7 @@ class _FilePickerWidgetState extends State<FilePickerWidget> {
                 ),
               ),
               Text(
-                widget.allowMultiple 
+                widget.allowMultiple
                     ? 'Choose one or more files'
                     : 'Choose a single file',
                 style: TextStyle(
@@ -126,7 +127,8 @@ class _FilePickerWidgetState extends State<FilePickerWidget> {
           icon: Icons.description,
           label: 'Documents',
           color: Colors.green,
-          onPressed: () => _pickFiles(FileType.custom, ['pdf', 'doc', 'docx', 'txt']),
+          onPressed: () =>
+              _pickFiles(FileType.custom, ['pdf', 'doc', 'docx', 'txt']),
         ),
         _buildFileTypeButton(
           icon: Icons.folder,
@@ -194,12 +196,12 @@ class _FilePickerWidgetState extends State<FilePickerWidget> {
   Widget _buildFileItem(String filePath, int index) {
     final fileName = path.basename(filePath);
     final file = File(filePath);
-    
+
     return FutureBuilder<int>(
       future: file.length(),
       builder: (context, snapshot) {
         final fileSize = snapshot.data ?? 0;
-        
+
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Row(
@@ -248,10 +250,10 @@ class _FilePickerWidgetState extends State<FilePickerWidget> {
 
   Widget _getFileIcon(String fileName) {
     final extension = path.extension(fileName).toLowerCase();
-    
+
     IconData iconData;
     Color color;
-    
+
     switch (extension) {
       case '.jpg':
       case '.jpeg':
@@ -294,7 +296,7 @@ class _FilePickerWidgetState extends State<FilePickerWidget> {
         iconData = Icons.insert_drive_file;
         color = Colors.grey;
     }
-    
+
     return Icon(
       iconData,
       color: color,
@@ -335,7 +337,8 @@ class _FilePickerWidgetState extends State<FilePickerWidget> {
     );
   }
 
-  Future<void> _pickFiles(FileType type, [List<String>? allowedExtensions]) async {
+  Future<void> _pickFiles(FileType type,
+      [List<String>? allowedExtensions]) async {
     setState(() {
       _isLoading = true;
     });
@@ -357,11 +360,13 @@ class _FilePickerWidgetState extends State<FilePickerWidget> {
       );
 
       if (result != null) {
-        final newFiles = result.paths.where((path) => path != null).cast<String>();
-        
+        final newFiles =
+            result.paths.where((path) => path != null).cast<String>();
+
         setState(() {
           if (widget.allowMultiple) {
-            _selectedFiles.addAll(newFiles.where((file) => !_selectedFiles.contains(file)));
+            _selectedFiles.addAll(
+                newFiles.where((file) => !_selectedFiles.contains(file)));
           } else {
             _selectedFiles.clear();
             _selectedFiles.addAll(newFiles);
@@ -398,7 +403,8 @@ class _FilePickerWidgetState extends State<FilePickerWidget> {
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes < 1024 * 1024 * 1024)
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
@@ -407,7 +413,8 @@ class _FilePickerWidgetState extends State<FilePickerWidget> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Permission Required'),
-        content: const Text('Storage permission is required to access files. Please grant permission in settings.'),
+        content: const Text(
+            'Storage permission is required to access files. Please grant permission in settings.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),

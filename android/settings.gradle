@@ -1,0 +1,14 @@
+pluginManagement {
+  includeBuild("C:/flutter/src/flutter/packages/flutter_tools/gradle")
+  repositories {
+    google()
+    mavenCentral()
+    gradlePluginPortal()
+  }
+  plugins {
+    id("com.android.application") version "8.7.2"
+    id("org.jetbrains.kotlin.android") version "2.1.0"
+    id("dev.flutter.flutter-gradle-plugin") version "1.0.0" apply false
+  }
+}
+include(":app")

@@ -1,10 +1,10 @@
-name: flutter_airdrop
+name: cross_platform_airdrop_flutter
 description: A cross-platform AirDrop-style file sharing app.
 publish_to: 'none' 
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.3.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -12,32 +12,24 @@ dependencies:
 
   # UI and Core Packages
   cupertino_icons: ^1.0.8
-  provider: ^6.1.5
+  provider: ^6.1.2
 
   # File & Storage
-  file_picker: ^8.1.2
-  path_provider: ^2.1.5
-  shared_preferences: ^2.5.3
-  path: ^1.9.1
+  file_picker: ^8.0.5
+  shared_preferences: ^2.2.3
 
   # Networking & Device Info
-  flutter_nearby_connections: ^1.1.2
-  permission_handler: ^11.4.0
-  network_info_plus: ^6.0.0
-  device_info_plus: ^11.1.0
-  connectivity_plus: ^6.1.0
-  uuid: ^4.5.1
-  
-  # Optional HTTP Packages (can be useful later)
-  http: ^1.5.0
-  dio: ^5.9.0
-  mime: ^1.0.6
+  flutter_webrtc: ^0.9.32
+  web_socket_channel: ^3.0.0
+  permission_handler: ^11.3.1
+  network_info_plus: ^5.0.3
+  device_info_plus: ^10.1.0
+  uuid: ^4.4.0
   
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.2
+  flutter_lints: ^4.0.0
 
-# Flutter-specific configurations
 flutter:
   uses-material-design: true

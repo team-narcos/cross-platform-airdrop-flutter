@@ -2,25 +2,15 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        maven {
+            url = uri("https://storage.googleapis.com/download.flutter.io")
+        }
     }
 }
 
-val newBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build").get()
-rootProject.layout.buildDirectory.value(newBuildDir)
-
-subprojects {
-    val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
-    project.layout.buildDirectory.value(newSubprojectBuildDir)
-}
-subprojects {
-    project.evaluationDependsOn(":app")
-}
+// Redirect the build directory to a path without spaces to fix the build error.
+rootProject.buildDir = File("C:/build/${rootProject.name}")
 
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
-}
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-    kotlinOptions {
-        jvmTarget = "1.8"
-    }
 }

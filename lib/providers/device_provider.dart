@@ -1,262 +1,123 @@
-import 'dart:async';
-
-import 'dart:io';
-import 'dart:math';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:device_info_plus/device_info_plus.dart';
-import 'package:network_info_plus/network_info_plus.dart';
-import 'package:uuid/uuid.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
+// Note: We will create a simple signaling service to help devices find each other.
+// For now, it is a placeholder.
+import 'package:web_socket_channel/web_socket_channel.dart';
+
 import '../models/device_model.dart';
 
 class DeviceProvider extends ChangeNotifier {
+  // --- WebRTC Properties ---
+  RTCPeerConnection? _peerConnection;
   final List<DeviceModel> _discoveredDevices = [];
-  DeviceModel? _currentDevice;
-  Timer? _discoveryTimer;
-  Timer? _broadcastTimer;
-  bool _isDiscovering = false;
-  final NetworkInfo _networkInfo = NetworkInfo();
-  final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
-  final Uuid _uuid = const Uuid();
+  SignalingService _signalingService = SignalingService();
 
-  List<DeviceModel> get discoveredDevices => List.unmodifiable(_discoveredDevices);
-  DeviceModel? get currentDevice => _currentDevice;
-  bool get isDiscovering => _isDiscovering;
+  // --- App State Properties ---
+  DeviceModel? _currentDevice; // You can still get local device info
+  bool _isConnecting = false;
 
+  List<DeviceModel> get discoveredDevices => _discoveredDevices;
+  bool get isConnecting => _isConnecting;
+
+  // Constructor
   Future<void> initialize() async {
-    await _initializeCurrentDevice();
-    await startDiscovery();
-  }
+    // We will connect to our signaling server to discover other devices
+    _signalingService.connect();
 
-  Future<void> _initializeCurrentDevice() async {
-    try {
-      final deviceId = _uuid.v4();
-      final deviceName = await _getDeviceName();
-      final ipAddress = await _networkInfo.getWifiIP() ?? '127.0.0.1';
-      final deviceType = await _getDeviceType();
-
-      _currentDevice = DeviceModel(
-        id: deviceId,
-        name: deviceName,
-        ipAddress: ipAddress,
-        type: deviceType,
-        isOnline: true,
-        lastSeen: DateTime.now(),
-      );
-
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Error initializing current device: $e');
-    }
-  }
-
-  Future<String> _getDeviceName() async {
-    try {
-      if (Platform.isAndroid) {
-        final androidInfo = await _deviceInfo.androidInfo;
-        return '${androidInfo.brand} ${androidInfo.model}';
-      } else if (Platform.isIOS) {
-        final iosInfo = await _deviceInfo.iosInfo;
-        return '${iosInfo.name}';
-      } else if (Platform.isWindows) {
-        final windowsInfo = await _deviceInfo.windowsInfo;
-        return windowsInfo.computerName;
-      } else if (Platform.isMacOS) {
-        final macInfo = await _deviceInfo.macOsInfo;
-        return macInfo.computerName;
-      } else if (Platform.isLinux) {
-        final linuxInfo = await _deviceInfo.linuxInfo;
-        return linuxInfo.name;
+    // Listen for messages from the signaling server
+    _signalingService.onMessage = (type, data) {
+      switch (type) {
+        case 'peers':
+          // The server sent us a list of other connected devices
+          final List peers = data['peers'];
+          _discoveredDevices.clear();
+          for (var peer in peers) {
+            _discoveredDevices.add(DeviceModel.fromJson(peer));
+          }
+          notifyListeners();
+          break;
+        // Other cases for handling WebRTC offers/answers will go here later
       }
-    } catch (e) {
-      debugPrint('Error getting device name: $e');
-    }
-    return 'Unknown Device';
+    };
   }
 
-  Future<DeviceType> _getDeviceType() async {
-    if (Platform.isAndroid) return DeviceType.android;
-    if (Platform.isIOS) return DeviceType.ios;
-    if (Platform.isWindows) return DeviceType.windows;
-    if (Platform.isMacOS) return DeviceType.macos;
-    if (Platform.isLinux) return DeviceType.linux;
-    return DeviceType.unknown;
-  }
-
-  Future<void> startDiscovery() async {
-    if (_isDiscovering) return;
-
-    _isDiscovering = true;
+  Future<void> connectToDevice(DeviceModel device) async {
+    _isConnecting = true;
     notifyListeners();
 
-    // Start broadcasting our presence
-    _startBroadcast();
+    // In WebRTC, you create a "peer connection"
+    _peerConnection = await createPeerConnection({
+      'iceServers': [
+        {'url': 'stun:stun.l.google.com:19302'},
+      ]
+    }, {});
 
-    // Start discovering other devices
-    _startDeviceDiscovery();
+    // Then you create an "offer" to send to the other device
+    RTCSessionDescription offer = await _peerConnection!.createOffer({});
+    await _peerConnection!.setLocalDescription(offer);
 
-    // Clean up offline devices periodically
-    _startCleanupTimer();
-  }
-
-  void _startBroadcast() {
-    _broadcastTimer?.cancel();
-    _broadcastTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      _broadcastPresence();
+    // We send this offer via the signaling server
+    _signalingService.send('offer', {
+      'offer': offer.toMap(),
+      'target': device.id, // The ID of the device we want to connect to
     });
-  }
 
-  void _startDeviceDiscovery() {
-    _discoveryTimer?.cancel();
-    _discoveryTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      _scanForDevices();
-    });
-  }
-
-  void _startCleanupTimer() {
-    Timer.periodic(const Duration(seconds: 30), (timer) {
-      _cleanupOfflineDevices();
-    });
-  }
-
-  Future<void> _broadcastPresence() async {
-    if (_currentDevice == null) return;
-
-    try {
-      // In a real implementation, this would use UDP multicast or similar
-      // For now, we'll simulate the broadcast
-      await _simulateBroadcast();
-    } catch (e) {
-      debugPrint('Error broadcasting presence: $e');
-    }
-  }
-
-  Future<void> _simulateBroadcast() async {
-    // This simulates other devices discovering us
-    // In a real app, this would involve actual network communication
-  }
-
-  Future<void> _scanForDevices() async {
-    try {
-      // In a real implementation, this would scan the network for other devices
-      // For demo purposes, we'll simulate finding devices
-      await _simulateDeviceDiscovery();
-    } catch (e) {
-      debugPrint('Error scanning for devices: $e');
-    }
-  }
-
-  Future<void> _simulateDeviceDiscovery() async {
-    // Simulate discovering random devices for demo purposes
-    if (_discoveredDevices.length < 3 && Random().nextBool()) {
-      final newDevice = _generateRandomDevice();
-      addDiscoveredDevice(newDevice);
-    }
-  }
-
-  DeviceModel _generateRandomDevice() {
-    final deviceNames = [
-      'John\'s iPhone',
-      'Sarah\'s MacBook',
-      'Mike\'s Android',
-      'Lisa\'s iPad',
-      'Tom\'s Windows PC',
-      'Anna\'s Galaxy',
-    ];
-
-    final deviceTypes = DeviceType.values.where((type) => type != DeviceType.unknown).toList();
-    final random = Random();
-
-    return DeviceModel(
-      id: _uuid.v4(),
-      name: deviceNames[random.nextInt(deviceNames.length)],
-      ipAddress: '192.168.1.${random.nextInt(254) + 1}',
-      type: deviceTypes[random.nextInt(deviceTypes.length)],
-      isOnline: true,
-      lastSeen: DateTime.now(),
-    );
-  }
-
-  void addDiscoveredDevice(DeviceModel device) {
-    // Don't add our own device
-    if (device.id == _currentDevice?.id) return;
-
-    final existingIndex = _discoveredDevices.indexWhere((d) => d.id == device.id);
-    if (existingIndex != -1) {
-      _discoveredDevices[existingIndex] = device.copyWith(
-        isOnline: true,
-        lastSeen: DateTime.now(),
-      );
-    } else {
-      _discoveredDevices.add(device);
-    }
+    _isConnecting = false;
     notifyListeners();
-  }
-
-  void removeDiscoveredDevice(String deviceId) {
-    _discoveredDevices.removeWhere((device) => device.id == deviceId);
-    notifyListeners();
-  }
-
-  void updateDeviceStatus(String deviceId, bool isOnline) {
-    final index = _discoveredDevices.indexWhere((device) => device.id == deviceId);
-    if (index != -1) {
-      _discoveredDevices[index] = _discoveredDevices[index].copyWith(
-        isOnline: isOnline,
-        lastSeen: isOnline ? DateTime.now() : _discoveredDevices[index].lastSeen,
-      );
-      notifyListeners();
-    }
-  }
-
-  void _cleanupOfflineDevices() {
-    final now = DateTime.now();
-    _discoveredDevices.removeWhere((device) {
-      final timeSinceLastSeen = now.difference(device.lastSeen);
-      return timeSinceLastSeen.inMinutes > 2; // Remove devices not seen for 2 minutes
-    });
-    
-    // Mark devices as offline if not seen recently
-    for (int i = 0; i < _discoveredDevices.length; i++) {
-      final timeSinceLastSeen = now.difference(_discoveredDevices[i].lastSeen);
-      if (timeSinceLastSeen.inSeconds > 30 && _discoveredDevices[i].isOnline) {
-        _discoveredDevices[i] = _discoveredDevices[i].copyWith(isOnline: false);
-      }
-    }
-    notifyListeners();
-  }
-
-  Future<void> stopDiscovery() async {
-    _isDiscovering = false;
-    _discoveryTimer?.cancel();
-    _broadcastTimer?.cancel();
-    notifyListeners();
-  }
-
-  void clearDiscoveredDevices() {
-    _discoveredDevices.clear();
-    notifyListeners();
-  }
-
-  Future<bool> pingDevice(DeviceModel device) async {
-    try {
-      // In a real implementation, this would ping the actual device
-      // For demo purposes, we'll simulate a ping result
-      await Future.delayed(const Duration(milliseconds: 500));
-      final isReachable = Random().nextBool();
-      
-      updateDeviceStatus(device.id, isReachable);
-      return isReachable;
-    } catch (e) {
-      debugPrint('Error pinging device: $e');
-      updateDeviceStatus(device.id, false);
-      return false;
-    }
   }
 
   @override
   void dispose() {
-    _discoveryTimer?.cancel();
-    _broadcastTimer?.cancel();
+    _signalingService.dispose();
+    _peerConnection?.dispose();
     super.dispose();
+  }
+}
+
+// --- A simple Signaling Service using WebSockets ---
+// This is a basic client. You will need a simple server for this to connect to.
+class SignalingService {
+  WebSocketChannel? _channel;
+  Function(String type, dynamic data)? onMessage;
+
+  void connect() {
+    try {
+      // --- IMPORTANT ---
+      // Connect to a local signaling server for stable development.
+      // You need to run a simple WebSocket server on your machine.
+      // The '10.0.2.2' IP is a special alias for your computer's localhost from the Android emulator.
+      final uri = kIsWeb
+          ? Uri.parse('ws://localhost:8080') // For web, use localhost
+          : Uri.parse(
+              'ws://10.0.2.2:8080'); // For Android emulator, use the special IP
+
+      _channel = WebSocketChannel.connect(uri);
+
+      _channel!.stream.listen((message) {
+        final decoded = jsonDecode(message);
+        final type = decoded['type'];
+        final data = decoded['data'];
+        if (onMessage != null) {
+          onMessage!(type, data);
+        }
+      }, onError: (error) {
+        debugPrint('Signaling Error: $error');
+      }, onDone: () {
+        debugPrint('Signaling Channel Closed');
+      });
+    } catch (e) {
+      debugPrint('Error connecting to signaling server: $e');
+    }
+  }
+
+  void send(String type, dynamic data) {
+    if (_channel != null) {
+      _channel!.sink.add(jsonEncode({'type': type, 'data': data}));
+    }
+  }
+
+  void dispose() {
+    _channel?.sink.close();
   }
 }
