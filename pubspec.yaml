@@ -9,7 +9,23 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  cupertino_icons: ^1.0.6
+  provider: ^6.1.1
+  file_picker: ^8.0.0
+  path: ^1.8.3
+  shared_preferences: ^2.2.2
+  permission_handler: ^11.1.0
+  network_info_plus: ^4.1.0
+  device_info_plus: ^9.1.1
+  uuid: ^4.2.1
+  http: ^1.1.2
+  dio: ^5.4.0
+  path_provider: ^2.1.1
+  mime: ^1.0.4
+  connectivity_plus: ^5.0.2
+  web_socket_channel: ^2.4.0  # Added for WebSocket signaling
 
+<<<<<<< HEAD
   # UI and Core Packages
   cupertino_icons: ^1.0.8
   provider: ^6.1.2
@@ -26,6 +42,8 @@ dependencies:
   device_info_plus: ^10.1.0
   uuid: ^4.4.0
   
+=======
+>>>>>>> f12af1b220791c3a97c52939a2dc5fd17d782d2b
 dev_dependencies:
   flutter_test:
     sdk: flutter
