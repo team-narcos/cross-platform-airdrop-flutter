@@ -1,243 +1,126 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'providers/device_provider.dart';
-import 'providers/file_transfer_provider.dart';
-import 'screens/home_screen.dart';
+import 'providers/simple_transfer_provider.dart';
 
 void main() {
-  // Ensure that widget binding is initialized before using plugins.
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MyApp());
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override 
+  @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(
-          create: (_) => DeviceProvider(),
-          lazy: false, // Create the provider immediately
-        ),
-        // Initialize the provider when it's created.
-        ChangeNotifierProvider(
-          create: (_) => FileTransferProvider(),
-          lazy: false, // Create the provider immediately
-        ),
-      ],
+    return ChangeNotifierProvider(
+      create: (_) => SimpleTransferProvider(),
       child: MaterialApp(
-        title: 'Flutter AirDrop',
-        debugShowCheckedModeBanner: false,
+        title: 'AirDrop Flutter',
         theme: ThemeData(
           primarySwatch: Colors.blue,
-          primaryColor: Colors.blue,
           useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.blue,
-            brightness: Brightness.light,
-          ),
-          appBarTheme: const AppBarTheme(
-            elevation: 0,
-            centerTitle: true,
-            systemOverlayStyle: SystemUiOverlayStyle.light,
-          ),
-          cardTheme: CardThemeData(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ElevatedButton.styleFrom(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          ),
-          inputDecorationTheme: InputDecorationTheme(
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            filled: true,
-            fillColor: Colors.grey.withAlpha(25),
-          ),
         ),
-        darkTheme: ThemeData(
-          primarySwatch: Colors.blue,
-          primaryColor: Colors.blue,
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.blue,
-            brightness: Brightness.dark,
-          ),
-          appBarTheme: const AppBarTheme(
-            elevation: 0,
-            centerTitle: true,
-            systemOverlayStyle: SystemUiOverlayStyle.light,
-          ),
-          cardTheme: CardThemeData(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ElevatedButton.styleFrom(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          ),
-          inputDecorationTheme: InputDecorationTheme(
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-            filled: true,
-            fillColor: Colors.grey.withAlpha(25),
-          ),
-        ),
-        home: const SplashScreen(),
+        home: SimpleFileShareScreen(),
+        debugShowCheckedModeBanner: false,
       ),
     );
   }
 }
 
-class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
-
-  @override
-  State<SplashScreen> createState() => _SplashScreenState();
-}
-
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _animationController = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    );
-
-    _animation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    );
-
-    _animationController.forward();
-
-    _initializeApp();
-  }
-
-  Future<void> _initializeApp() async {
-    // Initialize providers here
-    try {
-      await context.read<DeviceProvider>().initialize();
-      await context.read<FileTransferProvider>().initialize();
-    } catch (e) {
-      // Handle initialization error, maybe show an error message
-      debugPrint("Failed to initialize providers: $e");
-    }
-
-    // Wait for splash screen animation to finish
-    await Future.delayed(const Duration(seconds: 3));
-
-    if (!mounted) return;
-
-    Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const HomeScreen()));
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
+class SimpleFileShareScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).primaryColor,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AnimatedBuilder(
-              animation: _animation,
-              builder: (context, child) {
-                return Transform.scale(
-                  scale: _animation.value,
-                  child: Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(30),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withAlpha(51),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
+    return Consumer<SimpleTransferProvider>(
+      builder: (context, provider, child) {
+        return Scaffold(
+          appBar: AppBar(
+            title: Text('Simple File Share'),
+            backgroundColor: Colors.blue,
+            foregroundColor: Colors.white,
+          ),
+          body: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        Icon(Icons.share, size: 64, color: Colors.blue),
+                        SizedBox(height: 16),
+                        Text(
+                          'Cross-Platform File Sharing',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          provider.serverStatus,
+                          style: TextStyle(color: Colors.grey[600]),
                         ),
                       ],
                     ),
-                    child: const Icon(
-                      Icons.share,
-                      size: 60,
-                      color: Colors.blue,
-                    ),
                   ),
-                );
-              },
-            ),
-            const SizedBox(height: 32),
-            FadeTransition(
-              opacity: _animation,
-              child: const Column(
-                children: [
+                ),
+                SizedBox(height: 16),
+                
+                ElevatedButton.icon(
+                  onPressed: provider.isServerRunning 
+                      ? null 
+                      : () => provider.startServer(),
+                  icon: Icon(Icons.power_settings_new),
+                  label: Text(provider.isServerRunning ? 'Server Running' : 'Start Server'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: provider.isServerRunning ? Colors.green : Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+                
+                SizedBox(height: 16),
+                
+                ElevatedButton.icon(
+                  onPressed: () => provider.pickAndShareFile(),
+                  icon: Icon(Icons.file_upload),
+                  label: Text('Share Files'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+                
+                SizedBox(height: 16),
+                
+                if (provider.sharedFiles.isNotEmpty) ...[
                   Text(
-                    'Flutter AirDrop',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+                    'Shared Files:',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   SizedBox(height: 8),
-                  Text(
-                    'Share files wirelessly',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white70,
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: provider.sharedFiles.length,
+                      itemBuilder: (context, index) {
+                        final file = provider.sharedFiles[index];
+                        return Card(
+                          child: ListTile(
+                            leading: Icon(Icons.insert_drive_file),
+                            title: Text(file['name']),
+                            subtitle: Text('${(file['size'] / 1024).toStringAsFixed(1)} KB'),
+                            trailing: IconButton(
+                              icon: Icon(Icons.copy),
+                              onPressed: () => provider.copyShareUrl(file['name']),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ],
-              ),
+              ],
             ),
-            const SizedBox(height: 48),
-            FadeTransition(
-              opacity: _animation,
-              child: const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  strokeWidth: 2,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
